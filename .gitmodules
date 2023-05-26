@@ -1,0 +1,6 @@
+[submodule "SMCPy"]
+	path = SMCPy
+	url = https://github.com/nasa/SMCPy
+[submodule "wlpy"]
+	path = wlpy
+	url = git@github.com:lwg342/wlpy.git
