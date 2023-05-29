@@ -1,12 +1,13 @@
 # %% Use the particles package to achive SMC
 # 2023-05-29
+import matplotlib.pyplot as plt
+import numpy as np
+from particles.smc_samplers import TemperingBridge, AdaptiveTempering
 import particles
 from particles import smc_samplers as ssp
 from particles import distributions as dists
 from scipy import stats
-import matplotlib.pyplot as plt
-import numpy as np
-from particles.smc_samplers import TemperingBridge, AdaptiveTempering
+import seaborn as sns
 
 
 class ToyModel(ssp.StaticModel):
@@ -47,11 +48,12 @@ plt.legend()
 
 # %%
 
-data = np.random.normal(0, 1, [400,2])
+data = np.random.normal(0, 1, [400, 2])
 
 
 class ToyModel(ssp.StaticModel):
     def logpyt(self, theta, t):
+        print(theta.shape)
         return stats.norm.logpdf(
             (self.data[t][0] - theta["lambd"]) * (self.data[t][1] - theta["sigma"]),
             loc=0.0,
@@ -72,10 +74,48 @@ my_static_model = ToyModel(data=data, prior=my_prior)
 fk_tempering = ssp.AdaptiveTempering(my_static_model)
 my_temp_alg = particles.SMC(fk=fk_tempering, N=1000, ESSrmin=1.0, verbose=True)
 my_temp_alg.run()
-import seaborn as sb
 
 for i, p in enumerate(["lambd", "sigma"]):
     plt.subplot(1, 2, i + 1)
     sb.histplot(my_temp_alg.X.theta[p], stat="density")
     plt.xlabel(p)
+
+
+# %%
+class TestModel(ssp.TemperingModel):
+    def logtarget(self, theta):
+        pass
+
+
+params = dists.MvNormal(scale=10.0, cov=np.eye(2)).rvs(1000)
+data = data.T
+print(data.shape)
+print(params.shape)
+
+
+# %% With Data input
+def residual(params):
+    rslt = (data[0] - params[0]) ** 2 + (data[1] - (params[1])) ** 2
+    rslt = -0.5 * rslt
+    return np.mean(rslt)
+
+
+class ToyBridge(TemperingBridge):
+    def logtarget(self, theta):
+        # print(theta.shape)
+        # rslt = -0.5 * np.sum(theta**2, axis=1)
+        # rslt = -0.5 * (theta[:,0]**2 + theta[:,1]**2)
+        rslt = np.apply_along_axis(residual, 1, theta)
+        print(rslt.shape)
+        # print((rslt))
+        return rslt
+
+data = np.random.normal(20, 1, [2,100])
+base_dist = dists.MvNormal(scale=0.001, cov=np.eye(2))
+toy_bridge = ToyBridge(base_dist=base_dist)
+fk_tpr = AdaptiveTempering(model=toy_bridge, len_chain=100)
+alg = particles.SMC(fk=fk_tpr, N=100)
+alg.run()
+sns.histplot(alg.X.theta[:, 1], stat="density")
+sns.histplot(alg.X.theta[:, 0], stat="density")
 # %%

@@ -123,39 +123,33 @@ print(f"Probability divergence: {probability_divergence(M)}")
 
 
 # %%
-class NewLogLikelihood(BaseLogLike):
-    def __init__(self, model, data, args):
-        """
-        Likelihood function for data with additive, iid errors sampled from a
-        normal distribution with mean = 0 and std_dev = args. If args is None,
-        assumes that the last column of inputs contains the std_dev value.
-        """
-        super().__init__(model, data, args)
-
-    def __call__(self, inputs):
-        std_dev = self._args
-        if std_dev is None:
-            std_dev = inputs[:, -1]
-            inputs = inputs[:, :-1]
-        var = std_dev**2
-
-        output = self._get_output(inputs)
-
-        return self._calc_normal_log_like(output, self._data, var)
-
-    @staticmethod
-    def _calc_normal_log_like(output, data, var):
-        ssqe = np.sum((output - data) ** 2, axis=1)
-
-        term1 = -np.log(2 * np.pi * var) * (output.shape[1] / 2.0)
-        term2 = -1 / 2.0 * ssqe / var
-
-        return term1 + term2
+from particles.smc_samplers import TemperingBridge, AdaptiveTempering
+import particles
+from particles import smc_samplers as ssp
+from particles import distributions as dists
+from scipy import stats
+import seaborn as sns
+def residual(params):
+    rslt = (data[0] - params[0]) ** 2 + (data[1] - (params[1])) ** 2
+    rslt = -0.5 * rslt
+    return np.mean(rslt)
 
 
-def eval_model(theta):
-    # time.sleep(0.1) # artificial slowdown to show off progress bar
-    a = theta[:, 0, None]
-    b = theta[:, 1, None]
-    c = theta[:, 2, None]
-    return a + x * b + x**2 * c
+class ToyBridge(TemperingBridge):
+    def logtarget(self, theta):
+        # print(theta.shape)
+        # rslt = -0.5 * np.sum(theta**2, axis=1)
+        # rslt = -0.5 * (theta[:,0]**2 + theta[:,1]**2)
+        rslt = np.apply_along_axis(residual, 1, theta)
+        print(rslt.shape)
+        # print((rslt))
+        return rslt
+
+data = np.random.normal(20, 1, [2,100])
+base_dist = dists.MvNormal(scale=0.001, cov=np.eye(2))
+toy_bridge = ToyBridge(base_dist=base_dist)
+fk_tpr = AdaptiveTempering(model=toy_bridge, len_chain=100)
+alg = particles.SMC(fk=fk_tpr, N=100)
+alg.run()
+sns.histplot(alg.X.theta[:, 1], stat="density")
+sns.histplot(alg.X.theta[:, 0], stat="density")
