@@ -3,14 +3,6 @@ import numpy as np
 from scipy.optimize import minimize
 from wlpy.covariance import hac_cov
 import pandas as pd
-from utils import (
-    MCMCBase,
-    AdaptiveSampler,
-    VectorMCMC,
-    VectorMCMCKernel,
-    BaseLogLike,
-    uniform,
-)
 
 
 def residual_function(params, data):
@@ -129,10 +121,17 @@ from particles import smc_samplers as ssp
 from particles import distributions as dists
 from scipy import stats
 import seaborn as sns
-def residual(params):
-    rslt = (data[0] - params[0]) ** 2 + (data[1] - (params[1])) ** 2
-    rslt = -0.5 * rslt
-    return np.mean(rslt)
+
+
+def objective_fixed_data(params, weighting_matrix=None):
+    residual_mean = np.mean(residual_function(params, data), axis=1)
+    if weighting_matrix is None:
+        weighting_matrix = np.eye(residual_mean.shape[0])
+    return np.dot(np.dot(residual_mean, weighting_matrix), residual_mean)
+
+
+def vectorise_objective_fixed_data(params, weighting_matrix=None):
+    return np.apply_along_axis(objective_fixed_data, 1, params, weighting_matrix)
 
 
 class ToyBridge(TemperingBridge):
@@ -140,16 +139,49 @@ class ToyBridge(TemperingBridge):
         # print(theta.shape)
         # rslt = -0.5 * np.sum(theta**2, axis=1)
         # rslt = -0.5 * (theta[:,0]**2 + theta[:,1]**2)
-        rslt = np.apply_along_axis(residual, 1, theta)
-        print(rslt.shape)
+        # resid = np.apply_along_axis(residual_function, 1, theta)
+        # rslt = vectorise_objective_fixed_data(
+        #     np.concatenate(
+        #         [theta["lambd"][:, np.newaxis], theta["gamma"][:, np.newaxis]], axis=1
+        #     )
+        # )
+        rslt = vectorise_objective_fixed_data(theta)
+        print(rslt)
         # print((rslt))
-        return rslt
+        return -rslt
 
-data = np.random.normal(20, 1, [2,100])
-base_dist = dists.MvNormal(scale=0.001, cov=np.eye(2))
+
+# %%
+# data = np.random.normal(20, 1, [2,100])
+base_dist = dists.MvNormal(loc=[0.0, 20.0], cov=np.array([[1e-2, 0], [0, 2]]))
+# base_dist = dists.StructDist(
+#     {"lambd": dists.Gamma(a = 0.1, b= 0.1), "gamma": dists.Normal(scale=10.0)}
+# )
+
 toy_bridge = ToyBridge(base_dist=base_dist)
-fk_tpr = AdaptiveTempering(model=toy_bridge, len_chain=100)
+fk_tpr = AdaptiveTempering(model=toy_bridge, len_chain=200)
 alg = particles.SMC(fk=fk_tpr, N=100)
 alg.run()
-sns.histplot(alg.X.theta[:, 1], stat="density")
-sns.histplot(alg.X.theta[:, 0], stat="density")
+
+
+fig, axes = plt.subplots(1, 2)
+
+sns.histplot(alg.X.theta[:, 1], stat="density", ax=axes[0])
+axes[0].set_title("Histogram 1")
+
+sns.histplot(alg.X.theta[:, 0], stat="density", ax=axes[1])
+axes[1].set_title("Histogram 2")
+
+plt.tight_layout()
+plt.show()
+# %%
+import numpy as np
+
+# Create a NumPy array
+arr = alg.X.theta[:, 0]
+
+print("2.5th percentile:", np.percentile(arr, 2.5))
+print("97.5th percentile:", np.percentile(arr, 97.5))
+
+
+# %%
