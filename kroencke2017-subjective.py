@@ -66,9 +66,10 @@ def extract_data(start_year, consumption_measure, return_measure):
     return data
 
 
-# data = extract_data(1960, "UNFIL-N&S", "MKT_DECfs")  # Full sample 1928, post war 1960
-# data = extract_data(1960, "UNFIL-N&S", "MKT_Tafs")  # Full sample 1928, post war 1960
-data = extract_data(1960, "NIPA-N&S", "MKT_Tafs")  # Full sample 1928, post war 1960
+# Full sample 1928, post war 1960
+# data = extract_data(1960, "UNFIL-N&S", "MKT_DECfs")
+data = extract_data(1960, "UNFIL-N&S", "MKT_Tafs")
+# data = extract_data(1960, "NIPA-N&S", "MKT_Tafs")
 
 # %%
 params_guess = np.array([0.0, 20.0])
@@ -153,7 +154,7 @@ class ToyBridge(TemperingBridge):
 
 # %%
 # data = np.random.normal(20, 1, [2,100])
-base_dist = dists.MvNormal(loc=[0.0, 20.0], cov=np.array([[1e-2, 0], [0, 2]]))
+base_dist = dists.MvNormal(loc=[0.0, 20.0], cov=np.array([[1e-1, 0], [0, 2]]))
 # base_dist = dists.StructDist(
 #     {"lambd": dists.Gamma(a = 0.1, b= 0.1), "gamma": dists.Normal(scale=10.0)}
 # )
@@ -166,10 +167,10 @@ alg.run()
 
 fig, axes = plt.subplots(1, 2)
 
-sns.histplot(alg.X.theta[:, 1], stat="density", ax=axes[0])
+sns.histplot(alg.X.theta[:, 1], stat="density", kde=True, ax=axes[0])
 axes[0].set_title("Histogram 1")
 
-sns.histplot(alg.X.theta[:, 0], stat="density", ax=axes[1])
+sns.histplot(alg.X.theta[:, 0], stat="density", kde=True, ax=axes[1])
 axes[1].set_title("Histogram 2")
 
 plt.tight_layout()
@@ -178,7 +179,7 @@ plt.show()
 import numpy as np
 
 # Create a NumPy array
-arr = alg.X.theta[:, 0]
+arr = alg.X.theta[:, 1]
 
 print("2.5th percentile:", np.percentile(arr, 2.5))
 print("97.5th percentile:", np.percentile(arr, 97.5))
