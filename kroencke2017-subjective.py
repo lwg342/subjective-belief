@@ -137,27 +137,12 @@ def vectorise_objective_fixed_data(params, weighting_matrix=None):
 
 class ToyBridge(TemperingBridge):
     def logtarget(self, theta):
-        # print(theta.shape)
-        # rslt = -0.5 * np.sum(theta**2, axis=1)
-        # rslt = -0.5 * (theta[:,0]**2 + theta[:,1]**2)
-        # resid = np.apply_along_axis(residual_function, 1, theta)
-        # rslt = vectorise_objective_fixed_data(
-        #     np.concatenate(
-        #         [theta["lambd"][:, np.newaxis], theta["gamma"][:, np.newaxis]], axis=1
-        #     )
-        # )
         rslt = vectorise_objective_fixed_data(theta)
-        print(rslt)
-        # print((rslt))
         return -rslt
 
 
 # %%
-# data = np.random.normal(20, 1, [2,100])
 base_dist = dists.MvNormal(loc=[0.0, 20.0], cov=np.array([[1e-1, 0], [0, 2]]))
-# base_dist = dists.StructDist(
-#     {"lambd": dists.Gamma(a = 0.1, b= 0.1), "gamma": dists.Normal(scale=10.0)}
-# )
 
 toy_bridge = ToyBridge(base_dist=base_dist)
 fk_tpr = AdaptiveTempering(model=toy_bridge, len_chain=200)

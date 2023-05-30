@@ -77,7 +77,7 @@ my_temp_alg.run()
 
 for i, p in enumerate(["lambd", "sigma"]):
     plt.subplot(1, 2, i + 1)
-    sb.histplot(my_temp_alg.X.theta[p], stat="density")
+    sns.histplot(my_temp_alg.X.theta[p], stat="density")
     plt.xlabel(p)
 
 
