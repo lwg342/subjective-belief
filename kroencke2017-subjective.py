@@ -66,9 +66,10 @@ def extract_data(start_year, consumption_measure, return_measure):
     return data
 
 
-# data = extract_data(1960, "UNFIL-N&S", "MKT_DECfs")  # Full sample 1928, post war 1960
-# data = extract_data(1960, "UNFIL-N&S", "MKT_Tafs")  # Full sample 1928, post war 1960
-data = extract_data(1960, "NIPA-N&S", "MKT_Tafs")  # Full sample 1928, post war 1960
+# Full sample 1928, post war 1960
+# data = extract_data(1960, "UNFIL-N&S", "MKT_DECfs")
+data = extract_data(1960, "UNFIL-N&S", "MKT_Tafs")
+# data = extract_data(1960, "NIPA-N&S", "MKT_Tafs")
 
 # %%
 params_guess = np.array([0.0, 20.0])
@@ -99,13 +100,89 @@ y2 = [objective_function(np.array([-0.001, i]), data) for i in x]
 plt.plot(x, y)
 plt.plot(x, y2)
 
-# %% 
+
+# %%
 def probability_divergence(p, eta=0):
     if eta == 0:
         return np.mean(p * np.log(p))
     else:
         raise NotImplementedError("Not implemented yet")
-    
-M = np.exp(result.x[0] * residual_function(result.x, data)[0])/np.mean(np.exp(result.x[0] * residual_function(result.x, data)[0]))
+
+
+M = np.exp(result.x[0] * residual_function(result.x, data)[0]) / np.mean(
+    np.exp(result.x[0] * residual_function(result.x, data)[0])
+)
 print(f"Probability divergence: {probability_divergence(M)}")
+
+
+# %%
+from particles.smc_samplers import TemperingBridge, AdaptiveTempering
+import particles
+from particles import smc_samplers as ssp
+from particles import distributions as dists
+from scipy import stats
+import seaborn as sns
+
+
+def objective_fixed_data(params, weighting_matrix=None):
+    residual_mean = np.mean(residual_function(params, data), axis=1)
+    if weighting_matrix is None:
+        weighting_matrix = np.eye(residual_mean.shape[0])
+    return np.dot(np.dot(residual_mean, weighting_matrix), residual_mean)
+
+
+def vectorise_objective_fixed_data(params, weighting_matrix=None):
+    return np.apply_along_axis(objective_fixed_data, 1, params, weighting_matrix)
+
+
+class ToyBridge(TemperingBridge):
+    def logtarget(self, theta):
+        # print(theta.shape)
+        # rslt = -0.5 * np.sum(theta**2, axis=1)
+        # rslt = -0.5 * (theta[:,0]**2 + theta[:,1]**2)
+        # resid = np.apply_along_axis(residual_function, 1, theta)
+        # rslt = vectorise_objective_fixed_data(
+        #     np.concatenate(
+        #         [theta["lambd"][:, np.newaxis], theta["gamma"][:, np.newaxis]], axis=1
+        #     )
+        # )
+        rslt = vectorise_objective_fixed_data(theta)
+        print(rslt)
+        # print((rslt))
+        return -rslt
+
+
+# %%
+# data = np.random.normal(20, 1, [2,100])
+base_dist = dists.MvNormal(loc=[0.0, 20.0], cov=np.array([[1e-1, 0], [0, 2]]))
+# base_dist = dists.StructDist(
+#     {"lambd": dists.Gamma(a = 0.1, b= 0.1), "gamma": dists.Normal(scale=10.0)}
+# )
+
+toy_bridge = ToyBridge(base_dist=base_dist)
+fk_tpr = AdaptiveTempering(model=toy_bridge, len_chain=200)
+alg = particles.SMC(fk=fk_tpr, N=100)
+alg.run()
+
+
+fig, axes = plt.subplots(1, 2)
+
+sns.histplot(alg.X.theta[:, 1], stat="density", kde=True, ax=axes[0])
+axes[0].set_title("Histogram 1")
+
+sns.histplot(alg.X.theta[:, 0], stat="density", kde=True, ax=axes[1])
+axes[1].set_title("Histogram 2")
+
+plt.tight_layout()
+plt.show()
+# %%
+import numpy as np
+
+# Create a NumPy array
+arr = alg.X.theta[:, 1]
+
+print("2.5th percentile:", np.percentile(arr, 2.5))
+print("97.5th percentile:", np.percentile(arr, 97.5))
+
+
 # %%
