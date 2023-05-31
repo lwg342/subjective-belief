@@ -11,7 +11,8 @@ def residual_function(params, data):
     ret = data[1:]
     ret_excess_moment = 0.95 * (consumption_growth ** (-gamma)) * (ret)
     # rf_residual = 0.95 * (consumption_growth ** (-gamma)) * (rf) - 1.0
-    residual_derivative = ret_excess_moment * (-gamma) / consumption_growth
+    # residual_derivative = ret_excess_moment * (-gamma) / consumption_growth
+    residual_derivative = -1.0 * ret_excess_moment * np.log(consumption_growth)
     relative_entropy_weight = np.exp(lambd * ret_excess_moment)
     # relative_entropy_weight = 1.0
     return np.concatenate(
@@ -153,10 +154,10 @@ alg.run()
 fig, axes = plt.subplots(1, 2)
 
 sns.histplot(alg.X.theta[:, 1], stat="density", kde=True, ax=axes[0])
-axes[0].set_title("Histogram 1")
+axes[0].set_title("SMC Distribution of Gamma")
 
 sns.histplot(alg.X.theta[:, 0], stat="density", kde=True, ax=axes[1])
-axes[1].set_title("Histogram 2")
+axes[1].set_title("SMC Distribution of Lambda")
 
 plt.tight_layout()
 plt.show()
