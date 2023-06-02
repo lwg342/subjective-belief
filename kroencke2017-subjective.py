@@ -5,20 +5,43 @@ from wlpy.covariance import hac_cov
 import pandas as pd
 
 
+def expand_to_2d(arr):
+    if arr.ndim == 1:
+        return arr[np.newaxis, :]
+    else:
+        return arr
+
+
 def residual_function(params, data):
-    lambd, gamma = params
-    consumption_growth = data[0]
-    ret = data[1:]
-    ret_excess_moment = 0.95 * (consumption_growth ** (-gamma)) * (ret)
-    # rf_residual = 0.95 * (consumption_growth ** (-gamma)) * (rf) - 1.0
-    # residual_derivative = ret_excess_moment * (-gamma) / consumption_growth
-    residual_derivative = -1.0 * ret_excess_moment * np.log(consumption_growth)
-    relative_entropy_weight = np.exp(lambd * ret_excess_moment)
+    ll_mkt, ll_smb, ll_hml, ll_Rf, gamma = params
+
+
+    consumption_growth, ret_mkt, ret_smb, ret_hml, ret_Rf = data[:5]
+    
+    # ll = np.array([[ll_mkt, ll_smb, ll_hml, ll_Rf]])
+    # ll = np.array([[ll_mkt, ll_smb, ll_hml]])
+    # ret = np.stack([ret_mkt, ret_smb, ret_hml])
+    ll = np.array([[ll_mkt, ll_Rf]])
+    # ll = np.array([[0.0]])
+    # ll = np.array([[0,0,0,0]])
+    ret = np.stack([ret_mkt])
+
+    ret_moment = expand_to_2d(0.95 * (consumption_growth ** (-gamma)) * (ret))
+    rf_moment = expand_to_2d( 0.95 * (consumption_growth ** (-gamma)) * (ret_Rf) - 1.0)
+
+    all_moment = np.concatenate([ret_moment, rf_moment])
+    # all_moment = np.concatenate([ret_moment])
+
+    residual_derivative = -1.0 * all_moment * np.log(consumption_growth)
+
+    # relative_entropy_weight = np.exp(np.clip(ll @ all_moment,-300, 500))
+    relative_entropy_weight = np.exp(ll @ all_moment)
     # relative_entropy_weight = 1.0
+    # print(np.max(all_moment))
     return np.concatenate(
         [
-            relative_entropy_weight * ret_excess_moment,
-            relative_entropy_weight * lambd * residual_derivative,
+            relative_entropy_weight * all_moment,
+            relative_entropy_weight * (ll @ residual_derivative),
         ]
     )
 
@@ -57,28 +80,40 @@ def extract_data(start_year, consumption_measure, return_measure):
             (consumption_df.index >= start_year) & (consumption_df.index <= 2014)
         ][return_measure]
     )
-    ret2 = np.array(
-        ff3_df.loc[(ff3_df.index >= start_year) & (ff3_df.index <= 2014)]["SMB"]
+    ret2 = (
+        np.array(
+            ff3_df.loc[(ff3_df.index >= start_year) & (ff3_df.index <= 2014)]["SMB"]
+        )
+        / 100.0
     )
-    ret3 = np.array(
-        ff3_df.loc[(ff3_df.index >= start_year) & (ff3_df.index <= 2014)]["HML"]
+    ret3 = (
+        np.array(
+            ff3_df.loc[(ff3_df.index >= start_year) & (ff3_df.index <= 2014)]["HML"]
+        )
+        / 100.0
     )
     data = np.array([consumption_growth, ret, ret2, ret3, rf])
     return data
 
 
 # Full sample 1928, post war 1960
+data = extract_data(1960, "UNFIL-N&S", "MKT_DECfs")
+data = extract_data(1928, "UNFIL-N&S", "MKT_DECfs")
+# data = extract_data(1928, "NIPA-N&S", "MKT_DECfs")
+# data = extract_data(1928, "UNFIL-N&S", "MKT_Tafs")
+# data = extract_data(1960, "Q4-N&S", "MKT_DECfs")
+# data = extract_data(1960, "PJ-N&S", "MKT_DECfs")
 # data = extract_data(1960, "UNFIL-N&S", "MKT_DECfs")
-data = extract_data(1960, "UNFIL-N&S", "MKT_Tafs")
-# data = extract_data(1960, "NIPA-N&S", "MKT_Tafs")
+# data = extract_data(1960, "UNFIL-N&S", "MKT_Tafs")
+# data = extract_data(1960, "NIPA-N&S", "MKT_DECfs")
 
 # %%
-params_guess = np.array([0.0, 20.0])
+params_guess = np.array([0.0, 0.0, 0.0, 0.0, 15.0])
 result = minimize(
     objective_function,
     params_guess,
     args=(data,),
-    bounds=[(-1, 1), (0, 200)],
+    # bounds=[(-10, 10), (0, 200)],
     method="L-BFGS-B",
 )
 print(f"First Estimates: {result.x}")
@@ -87,11 +122,11 @@ result = minimize(
     objective_function,
     result.x,
     args=(data, weighting_matrix),
-    bounds=[(-1, 1), (0, 200)],
+    # bounds=[(-1, 1), (0, 200)],
     method="L-BFGS-B",
 )
 print(f"Second Estimates: {result.x}")
-
+print(f"Objective function: {result.fun}")
 # %%
 import matplotlib.pyplot as plt
 
@@ -143,21 +178,21 @@ class ToyBridge(TemperingBridge):
 
 
 # %%
-base_dist = dists.MvNormal(loc=[0.0, 20.0], cov=np.array([[1e-1, 0], [0, 2]]))
+base_dist = dists.MvNormal(loc=[0.0, 0.0, 0.0, 0.0, 20.0], cov=np.eye(5))
 
 toy_bridge = ToyBridge(base_dist=base_dist)
-fk_tpr = AdaptiveTempering(model=toy_bridge, len_chain=200)
-alg = particles.SMC(fk=fk_tpr, N=100)
+fk_tpr = AdaptiveTempering(model=toy_bridge, len_chain=50)
+alg = particles.SMC(fk=fk_tpr, N=20)
 alg.run()
 
 
 fig, axes = plt.subplots(1, 2)
 
-sns.histplot(alg.X.theta[:, 1], stat="density", kde=True, ax=axes[0])
-axes[0].set_title("SMC Distribution of Gamma")
 
 sns.histplot(alg.X.theta[:, 0], stat="density", kde=True, ax=axes[1])
 axes[1].set_title("SMC Distribution of Lambda")
+sns.histplot(alg.X.theta[:, -1], stat="density", kde=True, ax=axes[0])
+axes[0].set_title("SMC Distribution of Gamma")
 
 plt.tight_layout()
 plt.show()
@@ -165,7 +200,7 @@ plt.show()
 import numpy as np
 
 # Create a NumPy array
-arr = alg.X.theta[:, 1]
+arr = alg.X.theta[:, -1]
 
 print("2.5th percentile:", np.percentile(arr, 2.5))
 print("97.5th percentile:", np.percentile(arr, 97.5))
